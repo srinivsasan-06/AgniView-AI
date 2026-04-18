@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AGNIVIEW - Fire Detection System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg class="logo-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M18 4C18 4 10 12 10 20C10 24.4183 13.5817 28 18 28C22.4183 28 26 24.4183 26 20C26 12 18 4 18 4Z" fill="#ff2020" opacity="0.9"/>
+      <path d="M18 14C18 14 14 18 14 21C14 23.2091 15.7909 25 18 25C20.2091 25 22 23.2091 22 21C22 18 18 14 18 14Z" fill="#ffaa00"/>
+      <path d="M18 19C18 19 16 21 16 22.5C16 23.3284 16.6716 24 17.5 24C18 24 18 24 18.5 24C19.3284 24 20 23.3284 20 22.5C20 21 18 19 18 19Z" fill="#fff7"/>
+    </svg>
+    <div>
+      <div class="logo-text">AGNIVIEW</div>
+      <div class="logo-sub">Fire Detection System</div>
+    </div>
+  </div>
+  <div class="header-status">
+    <div class="conn-indicator">
+      <div class="conn-dot" id="ws-dot"></div>
+      <span id="ws-label" style="font-family:var(--mono);font-size:11px;color:var(--muted)">WEBCAM ONLY</span>
+    </div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<main>
+  <!-- Alert Banner -->
+  <div class="alert-banner safe" id="alert-banner">
+    <svg class="alert-icon" viewBox="0 0 32 32" fill="none" id="alert-icon-svg">
+      <circle cx="16" cy="16" r="13" stroke="#00e676" stroke-width="2"/>
+      <path d="M10 16L14 20L22 12" stroke="#00e676" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <div class="alert-label" id="alert-label">ALL CLEAR — NO FIRE DETECTED</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px;" id="alert-sub">System monitoring active</div>
+    </div>
+    <div class="alert-conf" style="text-align:right">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:2px;">CONFIDENCE</div>
+      <div class="conf-val" id="conf-big">0.0%</div>
+    </div>
+  </div>
+
+  <!-- Video Panel -->
+  <div class="video-panel">
+    <div class="panel-header">
+      <span class="panel-title">Live Feed — Webcam</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="btn-local" onclick="setMode('local')">Local AI</button>
+          <button class="mode-btn" id="btn-backend" onclick="setMode('backend')">Backend</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="video-container" id="video-container">
+      <video id="webcam" autoplay muted playsinline style="display:none;"></video>
+      <canvas id="overlay-canvas"></canvas>
+      <div class="fire-border" id="fire-border"></div>
+      <div class="corner corner-tl"></div>
+      <div class="corner corner-tr"></div>
+      <div class="corner corner-bl"></div>
+      <div class="corner corner-br"></div>
+      <div class="video-idle" id="video-idle">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="12" width="40" height="28" rx="3" stroke="#666" stroke-width="2"/>
+          <circle cx="24" cy="26" r="6" stroke="#666" stroke-width="2"/>
+          <path d="M33 12L39 7" stroke="#666" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>CAMERA STREAM OFFLINE</span>
+        <span style="font-size:10px;color:#444;">Click Start to activate webcam</span>
+      </div>
+    </div>
+
+    <div class="video-controls">
+      <button class="btn btn-start" id="btn-start" onclick="startStream()">▶ Start</button>
+      <button class="btn btn-stop" id="btn-stop" onclick="stopStream()" disabled>■ Stop</button>
+      <div class="frame-counter">
+        <span style="color:var(--muted);font-family:var(--mono);font-size:11px;">FRAMES </span>
+        <span style="font-family:var(--mono);font-size:11px;" id="frame-count">0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Side Panel -->
+  <div class="side-panel">
+
+    <!-- Stats -->
+    <div class="card">
+      <div class="card-header">System Statistics</div>
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <span class="stat-label">Frames</span>
+          <span class="stat-val" id="stat-frames">0</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">Alerts</span>
+          <span class="stat-val red" id="stat-alerts">0</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">FPS</span>
+          <span class="stat-val green" id="stat-fps">0</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">Confidence</span>
+          <span class="stat-val amber" id="stat-conf">0%</span>
+        </div>
+      </div>
+      <div class="conf-bar-wrap">
+        <div class="conf-bar-track">
+          <div class="conf-bar-fill" id="conf-bar"></div>
+        </div>
+        <div class="conf-bar-labels">
+          <span>0%</span>
+          <span>CONFIDENCE LEVEL</span>
+          <span>100%</span>
+        </div>
+      </div>
+      <div class="fps-bar">
+        <span class="fps-label">PROC RATE</span>
+        <div class="fps-track"><div class="fps-fill" id="fps-bar"></div></div>
+        <span class="fps-num" id="fps-num">0 fps</span>
+      </div>
+    </div>
+
+    <!-- Backend Status -->
+    <div class="card">
+      <div class="card-header">Backend Connection</div>
+      <div class="backend-status">
+        <div class="backend-row">
+          <span class="backend-key">API Status</span>
+          <span class="tag tag-offline" id="api-tag">OFFLINE</span>
+        </div>
+        <div class="backend-row">
+          <span class="backend-key">WebSocket</span>
+          <span class="tag tag-offline" id="ws-tag">DISCONNECTED</span>
+        </div>
+        <div class="backend-row">
+          <span class="backend-key">Detection Mode</span>
+          <span class="tag tag-warn" id="mode-tag">LOCAL SIM</span>
+        </div>
+        <div class="backend-row">
+          <span class="backend-key">Backend Frames</span>
+          <span class="backend-val" id="backend-frames">—</span>
+        </div>
+        <div style="padding-top:6px;border-top:1px solid var(--border);margin-top:2px;">
+          <button class="btn" style="font-size:10px;padding:5px 10px;width:100%;letter-spacing:1.5px;" onclick="tryConnectBackend()">
+            ↻ Connect to Backend (localhost:8000)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerts Log -->
+    <div class="card" style="flex:1;">
+      <div class="card-header">
+        <span>Fire Alerts</span>
+        <button class="btn-clear" onclick="clearAlerts()">Clear</button>
+      </div>
+      <div class="alerts-list" id="alerts-list">
+        <div class="no-alerts" id="no-alerts-msg">— No alerts yet —</div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<audio id="alarm-audio" src="alarm.mp3" preload="auto" loop></audio>
+
+<!-- External JS -->
+<script src="script.js"></script>
+
+</body>
+</html>
